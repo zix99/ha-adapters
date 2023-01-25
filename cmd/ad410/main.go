@@ -4,7 +4,6 @@ import (
 	"ha-adapters/pkg/amcrest"
 	"ha-adapters/pkg/comms"
 	"ha-adapters/pkg/comms/homeassistant"
-	"log"
 	"os"
 	"os/signal"
 	"time"
@@ -33,7 +32,7 @@ func runAD410(c *cli.Context) error {
 	// setup and connect to doorbell
 	doorbell, err := amcrest.ConnectAmcrest(amcrestUrl, amcrestUsername, amcrestPassword)
 	if err != nil {
-		log.Fatal(err)
+		logrus.Fatal(err)
 	}
 	logrus.Println("Serial: " + doorbell.SerialNumber)
 	logrus.Println("Type  : " + doorbell.DeviceType)
@@ -42,7 +41,7 @@ func runAD410(c *cli.Context) error {
 	// Setup MQTT and eventing
 	mqtt, err := comms.NewMqtt(mqttUri, mqttUsername, mqttPassword)
 	if err != nil {
-		log.Fatal(err)
+		logrus.Fatal(err)
 	}
 	defer mqtt.Close()
 
@@ -129,6 +128,7 @@ LOOP:
 			logrus.Info("Updating metadata...")
 			// TODO
 			logrus.Debug(doorbell.GetStorageInfo())
+			mqtt.PublishState(&dStorageUsedPercent, "0")
 		}
 	}
 
