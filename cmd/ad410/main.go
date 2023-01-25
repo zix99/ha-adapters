@@ -4,13 +4,17 @@ import (
 	"ha-adapters/pkg/amcrest"
 	"ha-adapters/pkg/comms"
 	"ha-adapters/pkg/comms/homeassistant"
+	"log"
 	"os"
 	"os/signal"
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"github.com/tidwall/gjson"
 	"github.com/urfave/cli/v2"
 )
+
+// https://github.com/dchesterton/amcrest2mqtt/blob/9917b41381c62ef32281c0f508caf3254cf76968/src/amcrest2mqtt.py
 
 func runAD410(c *cli.Context) error {
 	var (
@@ -29,7 +33,7 @@ func runAD410(c *cli.Context) error {
 	// setup and connect to doorbell
 	doorbell, err := amcrest.ConnectAmcrest(amcrestUrl, amcrestUsername, amcrestPassword)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	logrus.Println("Serial: " + doorbell.SerialNumber)
 	logrus.Println("Type  : " + doorbell.DeviceType)
@@ -38,8 +42,9 @@ func runAD410(c *cli.Context) error {
 	// Setup MQTT and eventing
 	mqtt, err := comms.NewMqtt(mqttUri, mqttUsername, mqttPassword)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
+	defer mqtt.Close()
 
 	ha := homeassistant.NewHomeAssistant(mqtt)
 	defer ha.Close()
@@ -48,13 +53,13 @@ func runAD410(c *cli.Context) error {
 		DeviceName:   "Amcrest " + doorbell.DeviceType,
 		Manufacturer: "Amcrest",
 		Model:        doorbell.DeviceType,
-		Identifier:   doorbell.SerialNumber,
+		Identifier:   "ad410-" + doorbell.SerialNumber,
 		Version:      doorbell.SoftwareVersion,
 	}
 
 	dButton := comms.Sensor{
 		DeviceClass: device,
-		Name:        "doorbell",
+		Name:        "Doorbell",
 		Type:        comms.DT_BINARY_SENSOR,
 		Icon:        "mdi:doorbell",
 	}
@@ -107,15 +112,14 @@ LOOP:
 
 			switch event.Code {
 			case "VideoMotion":
-				if event.Action == "Start" {
-					mqtt.PublishState(&dMotion, comms.STATE_ON)
-				} else {
-					mqtt.PublishState(&dMotion, comms.STATE_OFF)
-				}
+				mqtt.PublishState(&dMotion, comms.StateStr(event.Action == "Start"))
 			case "CrossRegionDetection":
-				// TODO
-			case "DING_DONG": // TODO
-				mqtt.PublishState(&dButton, comms.STATE_ON)
+				if gjson.Get(event.Data, "ObjectType").String() == "Human" {
+					mqtt.PublishState(&dHuman, comms.StateStr(event.Action == "Start"))
+				}
+			case "_DoTalkAction_": // TODO
+				state := comms.StateStr(gjson.Get(event.Data, "Action").String() == "Invite")
+				mqtt.PublishState(&dButton, state)
 			}
 		case <-sigint:
 			logrus.Info("Received interrupt")

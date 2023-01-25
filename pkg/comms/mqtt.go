@@ -2,17 +2,23 @@ package comms
 
 import (
 	"encoding/json"
-	"strings"
+	"path"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/sirupsen/logrus"
 )
 
-type Mqtt struct {
-	mqtt      mqtt.Client
-	Qos       byte
-	TopicRoot string
+type Publisher interface {
+	Publish(topic string, payload []byte) error
+	PublishString(topic string, payload string) error
 }
+
+type Mqtt struct {
+	mqtt mqtt.Client
+	Qos  byte
+}
+
+var _ Publisher = &Mqtt{}
 
 func NewMqtt(brokerUri string, username, password string) (*Mqtt, error) {
 	opts := mqtt.NewClientOptions()
@@ -32,10 +38,9 @@ func NewMqtt(brokerUri string, username, password string) (*Mqtt, error) {
 	ret := &Mqtt{
 		client,
 		2,
-		"ha-adapters/",
 	}
 
-	if err := ret.PublishRaw(ret.TopicStatus(), STATUS_ONLINE); err != nil {
+	if err := ret.PublishString(ret.TopicStatus(), STATUS_ONLINE); err != nil {
 		client.Disconnect(1000)
 		return nil, err
 	}
@@ -46,20 +51,24 @@ func NewMqtt(brokerUri string, username, password string) (*Mqtt, error) {
 }
 
 func (s *Mqtt) Close() error {
-	err := s.PublishRaw(s.TopicStatus(), STATUS_OFFLINE)
+	err := s.PublishString(s.TopicStatus(), STATUS_OFFLINE)
 	s.mqtt.Disconnect(1000)
 	return err
 }
 
 func (s *Mqtt) TopicStatus() string {
-	return s.TopicRoot + "status"
+	return path.Join(TopicPrefix, "status")
 }
 
 // Publish a topic with a string or []byte payload
-func (s *Mqtt) PublishRaw(topic string, payload interface{}) error {
-	logrus.Debugf("Publishing on %s: %s", topic, payload)
+func (s *Mqtt) Publish(topic string, payload []byte) error {
+	logrus.Tracef("Publishing on %s: %s", topic, payload)
 	ret := s.mqtt.Publish(topic, s.Qos, false, payload)
 	return resolveToken(ret)
+}
+
+func (s *Mqtt) PublishString(topic string, payload string) error {
+	return s.Publish(topic, []byte(payload))
 }
 
 func (s *Mqtt) PublishJson(topic string, data interface{}) error {
@@ -67,12 +76,11 @@ func (s *Mqtt) PublishJson(topic string, data interface{}) error {
 	if err != nil {
 		return err
 	}
-	return s.PublishRaw(topic, b)
+	return s.Publish(topic, b)
 }
 
-func (s *Mqtt) PublishState(device DeviceStateTopic, state string) error {
-	subtopic := strings.ToLower(device.StateTopic())
-	return s.PublishRaw(s.TopicRoot+subtopic, state)
+func (s *Mqtt) PublishState(device DeviceStateTopic, state string) {
+	s.PublishString(device.StateTopic(), state)
 }
 
 func resolveToken(t mqtt.Token) error {

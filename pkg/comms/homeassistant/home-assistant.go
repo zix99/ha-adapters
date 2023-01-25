@@ -16,7 +16,7 @@ var (
 )
 
 var (
-	topic_advertise_config = stemplate.MustNew("{{.HA.TopicRoot}}/{{.Dev.Type}}/{{.HA.TopicPrefix}}{{.Dev.Identifier}}/{{.Dev.Name}}/config")
+	topic_advertise_config = stemplate.MustNew("{{.HA.TopicRoot}}/{{.Dev.Type}}/{{.HA.TopicPrefix}}{{.Dev.Identifier}}/{{.Dev.SanitizedName}}/config")
 )
 
 type HomeAssistant struct {
@@ -35,7 +35,7 @@ func NewHomeAssistant(mqtt *comms.Mqtt) *HomeAssistant {
 }
 
 func (s *HomeAssistant) Close() error {
-	return s.mqtt.Close()
+	return nil
 }
 
 func (s *HomeAssistant) Advertise(d *comms.Sensor) error {
@@ -48,7 +48,7 @@ func (s *HomeAssistant) Advertise(d *comms.Sensor) error {
 
 	payload := s.deviceBaseConfig(&d.DeviceClass)
 	maps.Copy(payload, JsonMap{
-		"state_topic": s.mqtt.TopicRoot + d.StateTopic(),
+		"state_topic": d.StateTopic(),
 		"icon":        d.Icon,
 		"name":        d.Name,
 		"unique_id":   fmt.Sprintf("%s.%sb", d.Identifier, strings.ToLower(d.Name)),

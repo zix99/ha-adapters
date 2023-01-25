@@ -1,6 +1,12 @@
 package comms
 
-import "strings"
+import (
+	"path"
+	"regexp"
+	"strings"
+)
+
+var TopicPrefix = "ha-adapters"
 
 type DeviceClass struct {
 	DeviceName   string // A device name
@@ -36,6 +42,13 @@ const (
 	STATE_OFF = "off"
 )
 
+func StateStr(on bool) string {
+	if on {
+		return STATE_ON
+	}
+	return STATE_OFF
+}
+
 const (
 	STATUS_ONLINE  = "online"
 	STATUS_OFFLINE = "offline"
@@ -64,6 +77,22 @@ func (s *DeviceClass) NewBinarySensor(name string) *Sensor {
 	}
 }
 
+func (s *Sensor) SanitizedName() string {
+	return sanitize(s.Name)
+}
+
 func (s *Sensor) StateTopic() string {
-	return s.Identifier + "/" + strings.ToLower(s.Name)
+	return path.Join(
+		TopicPrefix,
+		sanitize(s.Identifier),
+		sanitize(s.Name))
+}
+
+var santizeRegex = regexp.MustCompile("[^a-zA-Z0-9\\-]+")
+
+func sanitize(s string) string {
+	sanitized := santizeRegex.ReplaceAllString(s, "_")
+	sanitized = strings.Trim(sanitized, "_")
+	sanitized = strings.ToLower(sanitized)
+	return sanitized
 }
