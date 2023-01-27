@@ -3,3 +3,8 @@
 
 # General binary file
 /ad410
+
+# Misc
+*.log
+/temp
+

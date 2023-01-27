@@ -3,10 +3,11 @@ package amcrest
 import (
 	"errors"
 	"fmt"
+	"ha-adapters/pkg/parsers"
 	"ha-adapters/pkg/xhttp"
+	"io"
 	"io/ioutil"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -65,9 +66,14 @@ func ConnectAmcrest(url string, username, password string) (*AmcrestDevice, erro
 	return s, nil
 }
 
-func (s *AmcrestDevice) GetStorageInfo() (string, error) {
+func (s *AmcrestDevice) GetStorageInfo() (map[string]string, error) {
 	// Todo: Some better interpretation
-	return s.request("/cgi-bin/storageDevice.cgi?action=getDeviceAllInfo")
+	info, err := s.request("/cgi-bin/storageDevice.cgi?action=getDeviceAllInfo")
+	if err != nil {
+		return nil, err
+	}
+
+	return parsers.ParseManyKV(info, "\n"), nil
 }
 
 func (s *AmcrestDevice) magicBox(action string) (string, error) {
@@ -75,39 +81,45 @@ func (s *AmcrestDevice) magicBox(action string) (string, error) {
 	if err != nil {
 		return ret, err
 	}
-	_, val := extractKV(ret)
+	_, val := parsers.ParseOneKV(ret)
 	return val, nil
 }
 
-func (s *AmcrestDevice) request(uri string) (string, error) {
+func (s *AmcrestDevice) requestStream(uri string) (io.ReadCloser, error) {
 	fullUrl := s.url + uri
 
 	req, err := http.NewRequest(http.MethodGet, fullUrl, nil)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	logrus.Debugf("Request %s %s", req.Method, req.URL)
 
 	resp, err := s.digestClient.Do(req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	defer resp.Body.Close()
+
+	logrus.Tracef("Request to %s returns %d", req.URL, resp.StatusCode)
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("http error %d", resp.StatusCode)
+		resp.Body.Close()
+		return nil, fmt.Errorf("http error %d", resp.StatusCode)
 	}
 
-	bytes, err := ioutil.ReadAll(resp.Body)
+	return resp.Body, nil
+}
+
+func (s *AmcrestDevice) request(uri string) (string, error) {
+	stream, err := s.requestStream(uri)
+	if err != nil {
+		return "", err
+	}
+	defer stream.Close()
+
+	bytes, err := ioutil.ReadAll(stream)
 	if err != nil {
 		return "", err
 	}
 	return string(bytes), nil
-}
-
-func extractKV(text string) (string, string) {
-	text = strings.TrimSpace(text)
-	idx := strings.IndexByte(text, '=')
-	return text[:idx], text[idx+1:]
 }

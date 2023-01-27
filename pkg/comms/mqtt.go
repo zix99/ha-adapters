@@ -3,6 +3,7 @@ package comms
 import (
 	"encoding/json"
 	"path"
+	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/sirupsen/logrus"
@@ -16,6 +17,8 @@ type Publisher interface {
 type Mqtt struct {
 	mqtt mqtt.Client
 	Qos  byte
+
+	shutdown chan<- struct{}
 }
 
 var _ Publisher = &Mqtt{}
@@ -36,14 +39,15 @@ func NewMqtt(brokerUri string, username, password string) (*Mqtt, error) {
 	}
 
 	ret := &Mqtt{
-		client,
-		2,
+		mqtt: client,
+		Qos:  2,
 	}
 
-	if err := ret.PublishString(ret.TopicStatus(), STATUS_ONLINE); err != nil {
-		client.Disconnect(1000)
+	shutdown, err := ret.startOnlineLoop(1 * time.Minute)
+	if err != nil {
 		return nil, err
 	}
+	ret.shutdown = shutdown
 
 	logrus.Info("Connected!")
 
@@ -51,6 +55,7 @@ func NewMqtt(brokerUri string, username, password string) (*Mqtt, error) {
 }
 
 func (s *Mqtt) Close() error {
+	s.shutdown <- struct{}{}
 	err := s.PublishString(s.TopicStatus(), STATUS_OFFLINE)
 	s.mqtt.Disconnect(1000)
 	return err
@@ -79,8 +84,37 @@ func (s *Mqtt) PublishJson(topic string, data interface{}) error {
 	return s.Publish(topic, b)
 }
 
-func (s *Mqtt) PublishState(device DeviceStateTopic, state string) {
-	s.PublishString(device.StateTopic(), state)
+func (s *Mqtt) PublishState(device DeviceStateTopic, state DeviceState) {
+	s.PublishString(device.StateTopic(), string(state))
+}
+
+func (s *Mqtt) PublishValue(device DeviceStateTopic, value string) {
+	s.PublishString(device.StateTopic(), value)
+}
+
+func (s *Mqtt) startOnlineLoop(intv time.Duration) (chan<- struct{}, error) {
+	shutdown := make(chan struct{})
+
+	if err := s.PublishString(s.TopicStatus(), STATUS_ONLINE); err != nil {
+		s.mqtt.Disconnect(1000)
+		return nil, err
+	}
+
+	go func() {
+		ticker := time.NewTicker(intv)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-shutdown:
+				return
+			case <-ticker.C:
+				s.PublishString(s.TopicStatus(), STATUS_ONLINE)
+			}
+		}
+	}()
+
+	return shutdown, nil
 }
 
 func resolveToken(t mqtt.Token) error {

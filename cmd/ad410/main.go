@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"ha-adapters/pkg/amcrest"
 	"ha-adapters/pkg/comms"
 	"ha-adapters/pkg/comms/homeassistant"
 	"os"
 	"os/signal"
+	"strconv"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -14,6 +16,8 @@ import (
 )
 
 // https://github.com/dchesterton/amcrest2mqtt/blob/9917b41381c62ef32281c0f508caf3254cf76968/src/amcrest2mqtt.py
+// Setting config: https://github.com/rroller/dahua/issues/52
+// Downloading data: https://github.com/rroller/dahua/issues/97
 
 func runAD410(c *cli.Context) error {
 	var (
@@ -49,10 +53,10 @@ func runAD410(c *cli.Context) error {
 	defer ha.Close()
 
 	device := comms.DeviceClass{
-		DeviceName:   "Amcrest " + doorbell.DeviceType,
-		Manufacturer: "Amcrest",
+		DeviceName:   "Amcrest(HAA) " + doorbell.DeviceType,
+		Manufacturer: "Amcrest(HAA)",
 		Model:        doorbell.DeviceType,
-		Identifier:   "ad410-" + doorbell.SerialNumber,
+		Identifier:   "ad410b-" + doorbell.SerialNumber,
 		Version:      doorbell.SoftwareVersion,
 	}
 
@@ -80,14 +84,28 @@ func runAD410(c *cli.Context) error {
 	dStorageUsedPercent := comms.Sensor{
 		DeviceClass:       device,
 		Type:              comms.DT_SENSOR,
-		Name:              "Storage Used %",
+		Name:              "Storage Used Percent",
 		UnitOfMeasurement: "%",
 	}
 
+	dStorageUsed := comms.Sensor{
+		DeviceClass:       device,
+		Type:              comms.DT_SENSOR,
+		Name:              "Storage Used",
+		UnitOfMeasurement: "GB",
+	}
+
 	ha.Advertise(&dButton)
+	mqtt.PublishState(&dButton, comms.STATE_OFF)
+
 	ha.Advertise(&dHuman)
+	mqtt.PublishState(&dHuman, comms.STATE_OFF)
+
 	ha.Advertise(&dMotion)
+	mqtt.PublishState(&dMotion, comms.STATE_OFF)
+
 	ha.Advertise(&dStorageUsedPercent)
+	ha.Advertise(&dStorageUsed)
 
 	// Core event loop
 	stream := doorbell.OpenReliableEventStream(10)
@@ -97,8 +115,8 @@ func runAD410(c *cli.Context) error {
 	signal.Notify(sigint, os.Interrupt)
 	defer signal.Stop(sigint)
 
-	metdataTicker := time.NewTicker(5 * time.Minute)
-	defer metdataTicker.Stop()
+	metadataTicker := time.NewTicker(5 * time.Minute)
+	defer metadataTicker.Stop()
 
 LOOP:
 	for {
@@ -113,22 +131,34 @@ LOOP:
 			case "VideoMotion":
 				mqtt.PublishState(&dMotion, comms.StateStr(event.Action == "Start"))
 			case "CrossRegionDetection":
-				if gjson.Get(event.Data, "ObjectType").String() == "Human" {
+				if gjson.Get(event.Data, "Object.ObjectType").String() == "Human" {
 					mqtt.PublishState(&dHuman, comms.StateStr(event.Action == "Start"))
 				}
-			case "_DoTalkAction_": // TODO
+			case "_DoTalkAction_":
 				state := comms.StateStr(gjson.Get(event.Data, "Action").String() == "Invite")
 				mqtt.PublishState(&dButton, state)
+			case "NewFile": // TODO
+				path := gjson.Get(event.Data, "File").String()
+				go doorbell.DownloadFileTo(path, "temp/"+fmt.Sprintf("%d", time.Now().UnixMilli()))
 			}
 		case <-sigint:
 			logrus.Info("Received interrupt")
 			break LOOP
 
-		case <-metdataTicker.C:
+		case <-metadataTicker.C:
 			logrus.Info("Updating metadata...")
-			// TODO
-			logrus.Debug(doorbell.GetStorageInfo())
-			mqtt.PublishState(&dStorageUsedPercent, "0")
+			info, err := doorbell.GetStorageInfo()
+			if err == nil {
+				logrus.Debug(info)
+				totalBytes, err0 := strconv.ParseFloat(info["list.info[0].Detail[0].TotalBytes"], 64)
+				usedBytes, err1 := strconv.ParseFloat(info["list.info[0].Detail[0].UsedBytes"], 64)
+				if err0 == nil && err1 == nil {
+					mqtt.PublishValue(&dStorageUsedPercent, strconv.FormatFloat(usedBytes*100.0/totalBytes, 'f', 1, 64))
+					mqtt.PublishValue(&dStorageUsed, strconv.FormatFloat(usedBytes/1024.0/1024.0/1024.0, 'f', 2, 64))
+				} else {
+					logrus.Warn(err0, err1)
+				}
+			}
 		}
 	}
 
@@ -185,6 +215,7 @@ func main() {
 		},
 	}
 	app.Before = func(ctx *cli.Context) error {
+		logrus.SetFormatter(&logrus.TextFormatter{DisableQuote: true, FullTimestamp: true})
 		if ctx.Bool("verbose") {
 			logrus.SetLevel(logrus.DebugLevel)
 		}

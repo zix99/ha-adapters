@@ -1,10 +1,8 @@
 package homeassistant
 
 import (
-	"fmt"
 	"ha-adapters/pkg/comms"
 	"ha-adapters/pkg/stemplate"
-	"strings"
 
 	"golang.org/x/exp/maps"
 )
@@ -49,9 +47,8 @@ func (s *HomeAssistant) Advertise(d *comms.Sensor) error {
 	payload := s.deviceBaseConfig(&d.DeviceClass)
 	maps.Copy(payload, JsonMap{
 		"state_topic": d.StateTopic(),
-		"icon":        d.Icon,
 		"name":        d.Name,
-		"unique_id":   fmt.Sprintf("%s.%sb", d.Identifier, strings.ToLower(d.Name)),
+		"unique_id":   d.UniqueId(),
 	})
 
 	switch d.Type {
@@ -66,10 +63,13 @@ func (s *HomeAssistant) Advertise(d *comms.Sensor) error {
 
 	// Optional classes
 	if d.ClassType != "" {
-		payload["device_class"] = d.DeviceClass
+		payload["device_class"] = d.ClassType
 	}
 	if d.Category != "" {
 		payload["entity_category"] = d.Category
+	}
+	if d.Icon != "" {
+		payload["icon"] = d.Icon
 	}
 
 	// Publish!

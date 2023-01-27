@@ -37,12 +37,14 @@ var (
 	DC_MOTION DeviceClassType = "motion"
 )
 
+type DeviceState string
+
 const (
-	STATE_ON  = "on"
-	STATE_OFF = "off"
+	STATE_ON  DeviceState = "on"
+	STATE_OFF DeviceState = "off"
 )
 
-func StateStr(on bool) string {
+func StateStr(on bool) DeviceState {
 	if on {
 		return STATE_ON
 	}
@@ -81,6 +83,10 @@ func (s *Sensor) SanitizedName() string {
 	return sanitize(s.Name)
 }
 
+func (s *Sensor) UniqueId() string {
+	return sanitize(s.Identifier) + "." + sanitize(s.Name)
+}
+
 func (s *Sensor) StateTopic() string {
 	return path.Join(
 		TopicPrefix,
@@ -88,7 +94,7 @@ func (s *Sensor) StateTopic() string {
 		sanitize(s.Name))
 }
 
-var santizeRegex = regexp.MustCompile("[^a-zA-Z0-9\\-]+")
+var santizeRegex = regexp.MustCompile(`[^a-zA-Z0-9\-]+`)
 
 func sanitize(s string) string {
 	sanitized := santizeRegex.ReplaceAllString(s, "_")

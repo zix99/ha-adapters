@@ -66,7 +66,11 @@ func (s *AmcrestDevice) OpenEventStream() (<-chan Event, error) {
 	logrus.Info("Connection open, listening to stream...")
 	c := make(chan Event, 10)
 
-	_, contentParams, _ := mime.ParseMediaType(resp.Header.Get("content-type"))
+	_, contentParams, err := mime.ParseMediaType(resp.Header.Get("content-type"))
+	if err != nil {
+		resp.Body.Close()
+		return nil, err
+	}
 	boundaryKeyword := contentParams["boundary"]
 
 	go func() {
@@ -78,11 +82,11 @@ func (s *AmcrestDevice) OpenEventStream() (<-chan Event, error) {
 			if err != nil {
 				break
 			}
-			defer part.Close()
 
 			datalen, err := strconv.Atoi(part.Header.Get("content-length"))
 			if err != nil {
 				logrus.Warnf("Error reading stream length: %v", err)
+				part.Close()
 				continue
 			}
 
@@ -90,10 +94,12 @@ func (s *AmcrestDevice) OpenEventStream() (<-chan Event, error) {
 			_, err = part.Read(data)
 			if err != nil {
 				logrus.Warnf("Error reading stream data: %v", err)
+				part.Close()
 				continue
 			}
 			logrus.Debugf("Received %d bytes: %s", len(data), string(data))
 			c <- payloadToEvent(data)
+			part.Close()
 		}
 
 		logrus.Info("Closing event stream...")
