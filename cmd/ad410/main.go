@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"ha-adapters/cmd/internal/xcli"
+	"ha-adapters/cmd/internal/xcli/clilog"
+	"ha-adapters/cmd/internal/xcli/climqtt"
 	"ha-adapters/pkg/amcrest"
 	"ha-adapters/pkg/comms"
 	"ha-adapters/pkg/comms/homeassistant"
@@ -24,14 +27,7 @@ func runAD410(c *cli.Context) error {
 		amcrestUrl      = c.String("ad410-url")
 		amcrestUsername = c.String("ad410-username")
 		amcrestPassword = c.String("ad410-password")
-		mqttUri         = c.String("mqtt-uri")
-		mqttUsername    = c.String("mqtt-username")
-		mqttPassword    = c.String("mqtt-password")
 	)
-
-	if amcrestUrl == "" || mqttUri == "" {
-		logrus.Fatal("Missing config")
-	}
 
 	// setup and connect to doorbell
 	doorbell, err := amcrest.ConnectAmcrest(amcrestUrl, amcrestUsername, amcrestPassword)
@@ -43,7 +39,7 @@ func runAD410(c *cli.Context) error {
 	logrus.Println(doorbell.SoftwareVersion)
 
 	// Setup MQTT and eventing
-	mqtt, err := comms.NewMqtt(mqttUri, mqttUsername, mqttPassword)
+	mqtt, err := climqtt.BuildClientFromFlags(c)
 	if err != nil {
 		logrus.Fatal(err)
 	}
@@ -168,9 +164,11 @@ LOOP:
 }
 
 func main() {
+	logrus.SetFormatter(&logrus.TextFormatter{DisableQuote: true, FullTimestamp: true})
+
 	app := cli.NewApp()
 	app.Usage = "Amcrest AD410 to MQTT (Home-assistant)"
-	app.Flags = []cli.Flag{
+	app.Flags = xcli.JoinFlags(climqtt.Flags, []cli.Flag{
 		&cli.StringFlag{
 			Name:     "ad410-url",
 			EnvVars:  []string{"AD410_URL"},
@@ -188,42 +186,8 @@ func main() {
 			EnvVars: []string{"AD410_PASSWORD"},
 			Usage:   "AD410 password",
 		},
-		&cli.StringFlag{
-			Name:     "mqtt-uri",
-			EnvVars:  []string{"MQTT_URI"},
-			Usage:    "Set MQTT broker",
-			Required: true,
-		},
-		&cli.StringFlag{
-			Name:    "mqtt-username",
-			EnvVars: []string{"MQTT_USERNAME"},
-			Usage:   "MQTT username",
-		},
-		&cli.StringFlag{
-			Name:    "mqtt-password",
-			EnvVars: []string{"MQTT_PASSWORD"},
-			Usage:   "MQTT password",
-		},
-		&cli.BoolFlag{
-			Name:    "verbose",
-			Aliases: []string{"v"},
-			Usage:   "Verbose log mode",
-		},
-		&cli.BoolFlag{
-			Name:  "trace",
-			Usage: "Even more logging",
-		},
-	}
-	app.Before = func(ctx *cli.Context) error {
-		logrus.SetFormatter(&logrus.TextFormatter{DisableQuote: true, FullTimestamp: true})
-		if ctx.Bool("verbose") {
-			logrus.SetLevel(logrus.DebugLevel)
-		}
-		if ctx.Bool("trace") {
-			logrus.SetLevel(logrus.TraceLevel)
-		}
-		return nil
-	}
+	})
+	clilog.AdaptForLogSettings(app)
 	app.Action = runAD410
 
 	if err := app.Run(os.Args); err != nil {

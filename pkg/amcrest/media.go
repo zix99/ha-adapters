@@ -24,6 +24,7 @@ func (s *AmcrestDevice) DownloadFileTo(path, to string) error {
 	if err != nil {
 		return err
 	}
+	defer f.Close()
 
 	var total uint64
 

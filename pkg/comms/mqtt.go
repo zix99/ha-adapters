@@ -2,6 +2,7 @@ package comms
 
 import (
 	"encoding/json"
+	"errors"
 	"path"
 	"time"
 
@@ -69,7 +70,11 @@ func (s *Mqtt) TopicStatus() string {
 func (s *Mqtt) Publish(topic string, payload []byte) error {
 	logrus.Tracef("Publishing on %s: %s", topic, payload)
 	ret := s.mqtt.Publish(topic, s.Qos, false, payload)
-	return resolveToken(ret)
+	err := resolveToken(ret)
+	if err != nil {
+		logrus.Debugf("Error publishing to %s: %s", topic, err)
+	}
+	return err
 }
 
 func (s *Mqtt) PublishString(topic string, payload string) error {
@@ -90,6 +95,18 @@ func (s *Mqtt) PublishState(device DeviceStateTopic, state DeviceState) {
 
 func (s *Mqtt) PublishValue(device DeviceStateTopic, value string) {
 	s.PublishString(device.StateTopic(), value)
+}
+
+func (s *Mqtt) Subscribe(topic string) (events <-chan mqtt.Message, err error) {
+	c := make(chan mqtt.Message, 10)
+	logrus.Debugf("Subscribing to %s...", topic)
+	t := s.mqtt.Subscribe(topic, 0, func(client mqtt.Client, m mqtt.Message) {
+		c <- m
+	})
+	if err := resolveToken(t); err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 func (s *Mqtt) startOnlineLoop(intv time.Duration) (chan<- struct{}, error) {
@@ -118,6 +135,8 @@ func (s *Mqtt) startOnlineLoop(intv time.Duration) (chan<- struct{}, error) {
 }
 
 func resolveToken(t mqtt.Token) error {
-	t.Wait()
+	if !t.WaitTimeout(5 * time.Second) {
+		return errors.New("mqtt request timed out")
+	}
 	return t.Error()
 }
