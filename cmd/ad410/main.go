@@ -1,16 +1,18 @@
 package main
 
 import (
-	"fmt"
 	"ha-adapters/cmd/internal/xcli"
 	"ha-adapters/cmd/internal/xcli/clilog"
 	"ha-adapters/cmd/internal/xcli/climqtt"
 	"ha-adapters/pkg/amcrest"
 	"ha-adapters/pkg/comms"
 	"ha-adapters/pkg/comms/homeassistant"
+	"ha-adapters/pkg/stemplate"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -27,7 +29,17 @@ func runAD410(c *cli.Context) error {
 		amcrestUrl      = c.String("ad410-url")
 		amcrestUsername = c.String("ad410-username")
 		amcrestPassword = c.String("ad410-password")
+		mediaDir        = c.String("media-dir")
 	)
+
+	var mediaDirTmpl *stemplate.STemplate
+	if mediaDir != "" {
+		ret, err := stemplate.New(mediaDir)
+		if err != nil {
+			logrus.Fatal("Invalid media template: ", err)
+		}
+		mediaDirTmpl = ret
+	}
 
 	// setup and connect to doorbell
 	doorbell, err := amcrest.ConnectAmcrest(amcrestUrl, amcrestUsername, amcrestPassword)
@@ -82,6 +94,7 @@ func runAD410(c *cli.Context) error {
 		Type:              comms.DT_SENSOR,
 		Name:              "Storage Used Percent",
 		UnitOfMeasurement: "%",
+		Category:          comms.EC_DIAGNOSTIC,
 	}
 
 	dStorageUsed := comms.Sensor{
@@ -89,6 +102,7 @@ func runAD410(c *cli.Context) error {
 		Type:              comms.DT_SENSOR,
 		Name:              "Storage Used",
 		UnitOfMeasurement: "GB",
+		Category:          comms.EC_DIAGNOSTIC,
 	}
 
 	ha.Advertise(&dButton)
@@ -133,9 +147,15 @@ LOOP:
 			case "_DoTalkAction_":
 				state := comms.StateStr(gjson.Get(event.Data, "Action").String() == "Invite")
 				mqtt.PublishState(&dButton, state)
-			case "NewFile": // TODO
-				path := gjson.Get(event.Data, "File").String()
-				go doorbell.DownloadFileTo(path, "temp/"+fmt.Sprintf("%d", time.Now().UnixMilli()))
+			case "NewFile":
+				camPath := gjson.Get(event.Data, "File").String()
+				// There are also `.mp4`, but they seem poorly encoded. I currently can't
+				// get them to decode (moov atom error)
+				if mediaDirTmpl != nil && strings.EqualFold(filepath.Ext(camPath), ".jpg") {
+					outDir := mediaDirTmpl.Execute(struct{}{})
+					os.MkdirAll(filepath.Dir(outDir), 0770)
+					go doorbell.DownloadFileTo(camPath, outDir)
+				}
 			}
 		case <-sigint:
 			logrus.Info("Received interrupt")
@@ -185,6 +205,11 @@ func main() {
 			Name:    "ad410-password",
 			EnvVars: []string{"AD410_PASSWORD"},
 			Usage:   "AD410 password",
+		},
+		&cli.StringFlag{
+			Name:    "media-dir",
+			Usage:   "Path to write media to. Uses path template. If empty, don't write",
+			EnvVars: []string{"MEDIA_DIR"},
 		},
 	})
 	clilog.AdaptForLogSettings(app)

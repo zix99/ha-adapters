@@ -27,8 +27,8 @@ type EntityCategory string
 
 var (
 	EC_DEFAULT    EntityCategory = ""
-	EC_CONFIG                    = "config"
-	EC_DIAGNOSTIC                = "diagnostic"
+	EC_CONFIG     EntityCategory = "config"
+	EC_DIAGNOSTIC EntityCategory = "diagnostic"
 )
 
 type DeviceClassType string

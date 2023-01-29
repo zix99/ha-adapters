@@ -3,6 +3,7 @@ package stemplate
 import (
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -11,8 +12,12 @@ type STemplate struct {
 	tmpl *template.Template
 }
 
+var helpers = template.FuncMap{
+	"now": time.Now,
+}
+
 func New(text string) (*STemplate, error) {
-	t, err := template.New(uuid.NewString()).Parse(text)
+	t, err := template.New(uuid.NewString()).Funcs(helpers).Parse(text)
 	if err != nil {
 		return nil, err
 	}
