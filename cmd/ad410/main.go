@@ -29,17 +29,8 @@ func runAD410(c *cli.Context) error {
 		amcrestUrl      = c.String("ad410-url")
 		amcrestUsername = c.String("ad410-username")
 		amcrestPassword = c.String("ad410-password")
-		mediaDir        = c.String("media-dir")
+		mediaDirTmpl    = mustCompileTemplateOrNil(c.String("media-dir"))
 	)
-
-	var mediaDirTmpl *stemplate.STemplate
-	if mediaDir != "" {
-		ret, err := stemplate.New(mediaDir)
-		if err != nil {
-			logrus.Fatal("Invalid media template: ", err)
-		}
-		mediaDirTmpl = ret
-	}
 
 	// setup and connect to doorbell
 	doorbell, err := amcrest.ConnectAmcrest(amcrestUrl, amcrestUsername, amcrestPassword)
@@ -57,7 +48,11 @@ func runAD410(c *cli.Context) error {
 	}
 	defer mqtt.Close()
 
-	ha := homeassistant.NewHomeAssistant(mqtt)
+	ha, err := homeassistant.NewHomeAssistant(mqtt)
+	if err != nil {
+		mqtt.Close()
+		logrus.Fatal(err)
+	}
 	defer ha.Close()
 
 	device := comms.DeviceClass{
@@ -105,6 +100,13 @@ func runAD410(c *cli.Context) error {
 		Category:          comms.EC_DIAGNOSTIC,
 	}
 
+	dLightSwitch := comms.Sensor{
+		DeviceClass: device,
+		Type:        comms.DT_SWITCH,
+		Category:    comms.EC_CONFIG,
+		Name:        "Light",
+	}
+
 	ha.Advertise(&dButton)
 	mqtt.PublishState(&dButton, comms.STATE_OFF)
 
@@ -114,8 +116,16 @@ func runAD410(c *cli.Context) error {
 	ha.Advertise(&dMotion)
 	mqtt.PublishState(&dMotion, comms.STATE_OFF)
 
+	ha.Advertise(&dLightSwitch)
+	mqtt.PublishState(&dLightSwitch, comms.STATE_OFF)
+
 	ha.Advertise(&dStorageUsedPercent)
 	ha.Advertise(&dStorageUsed)
+
+	// Config/events
+	mqtt.SubscribeFunc(dLightSwitch.StateTopic(), func(topic, val string) {
+		doorbell.SetLight(comms.StrState(val))
+	})
 
 	// Core event loop
 	stream := doorbell.OpenReliableEventStream(10)
@@ -181,6 +191,17 @@ LOOP:
 	// Go down
 	logrus.Info("Shutting down...")
 	return nil
+}
+
+func mustCompileTemplateOrNil(text string) *stemplate.STemplate {
+	if text == "" {
+		return nil
+	}
+	t, err := stemplate.New(text)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	return t
 }
 
 func main() {

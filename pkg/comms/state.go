@@ -21,6 +21,7 @@ type DeviceType string
 const (
 	DT_BINARY_SENSOR DeviceType = "binary_sensor"
 	DT_SENSOR        DeviceType = "sensor"
+	DT_SWITCH        DeviceType = "switch"
 )
 
 type EntityCategory string
@@ -34,7 +35,8 @@ var (
 type DeviceClassType string
 
 var (
-	DC_MOTION DeviceClassType = "motion"
+	DC_MOTION  DeviceClassType = "motion"
+	DC_BATTERY DeviceClassType = "battery"
 )
 
 type DeviceState string
@@ -49,6 +51,10 @@ func StateStr(on bool) DeviceState {
 		return STATE_ON
 	}
 	return STATE_OFF
+}
+
+func StrState(s string) bool {
+	return strings.EqualFold(s, string(STATE_ON))
 }
 
 const (

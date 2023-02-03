@@ -3,6 +3,8 @@ package homeassistant
 import (
 	"ha-adapters/pkg/comms"
 	"ha-adapters/pkg/stemplate"
+	"path"
+	"time"
 
 	"golang.org/x/exp/maps"
 )
@@ -21,18 +23,33 @@ type HomeAssistant struct {
 	mqtt        *comms.Mqtt
 	TopicRoot   string
 	TopicPrefix string
+
+	statusShutdown chan<- struct{}
 }
 
-func NewHomeAssistant(mqtt *comms.Mqtt) *HomeAssistant {
+func NewHomeAssistant(mqtt *comms.Mqtt) (*HomeAssistant, error) {
 	ha := &HomeAssistant{
-		mqtt,
-		Default_HA_Root,
-		Default_HA_Prefix,
+		mqtt:        mqtt,
+		TopicRoot:   Default_HA_Root,
+		TopicPrefix: Default_HA_Prefix,
 	}
-	return ha
+
+	shutdown, err := ha.startOnlineLoop(1 * time.Minute)
+	if err != nil {
+		return nil, err
+	}
+	ha.statusShutdown = shutdown
+
+	return ha, nil
 }
 
 func (s *HomeAssistant) Close() error {
+	if s.statusShutdown != nil {
+		s.statusShutdown <- struct{}{}
+		s.statusShutdown = nil
+
+		s.mqtt.PublishString(s.TopicStatus(), comms.STATUS_OFFLINE)
+	}
 	return nil
 }
 
@@ -57,6 +74,9 @@ func (s *HomeAssistant) Advertise(d *comms.Sensor) error {
 			"payload_on":  comms.STATE_ON,
 			"payload_off": comms.STATE_OFF,
 		})
+	case comms.DT_SWITCH:
+		payload["command_topic"] = d.StateTopic()
+		payload["optimistic"] = true
 	case comms.DT_SENSOR:
 		payload["unit_of_measurement"] = d.UnitOfMeasurement
 	}
@@ -78,7 +98,7 @@ func (s *HomeAssistant) Advertise(d *comms.Sensor) error {
 
 func (s *HomeAssistant) deviceBaseConfig(dc *comms.DeviceClass) JsonMap {
 	return JsonMap{
-		"availability_topic": s.mqtt.TopicStatus(),
+		"availability_topic": s.TopicStatus(),
 		"qos":                s.mqtt.Qos,
 		"device": JsonMap{
 			"name":         dc.DeviceName,
@@ -89,4 +109,32 @@ func (s *HomeAssistant) deviceBaseConfig(dc *comms.DeviceClass) JsonMap {
 			"via_device":   Default_HA_Via,
 		},
 	}
+}
+
+func (s *HomeAssistant) TopicStatus() string {
+	return path.Join(comms.TopicPrefix, "status")
+}
+
+func (s *HomeAssistant) startOnlineLoop(intv time.Duration) (chan<- struct{}, error) {
+	shutdown := make(chan struct{})
+
+	if err := s.mqtt.PublishString(s.TopicStatus(), comms.STATUS_ONLINE); err != nil {
+		return nil, err
+	}
+
+	go func() {
+		ticker := time.NewTicker(intv)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-shutdown:
+				return
+			case <-ticker.C:
+				s.mqtt.PublishString(s.TopicStatus(), comms.STATUS_ONLINE)
+			}
+		}
+	}()
+
+	return shutdown, nil
 }

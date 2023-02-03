@@ -3,7 +3,6 @@ package comms
 import (
 	"encoding/json"
 	"errors"
-	"path"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -18,8 +17,6 @@ type Publisher interface {
 type Mqtt struct {
 	mqtt mqtt.Client
 	Qos  byte
-
-	shutdown chan<- struct{}
 }
 
 var _ Publisher = &Mqtt{}
@@ -44,26 +41,14 @@ func NewMqtt(brokerUri string, username, password string) (*Mqtt, error) {
 		Qos:  2,
 	}
 
-	shutdown, err := ret.startOnlineLoop(1 * time.Minute)
-	if err != nil {
-		return nil, err
-	}
-	ret.shutdown = shutdown
-
 	logrus.Info("Connected!")
 
 	return ret, nil
 }
 
 func (s *Mqtt) Close() error {
-	s.shutdown <- struct{}{}
-	err := s.PublishString(s.TopicStatus(), STATUS_OFFLINE)
 	s.mqtt.Disconnect(1000)
-	return err
-}
-
-func (s *Mqtt) TopicStatus() string {
-	return path.Join(TopicPrefix, "status")
+	return nil
 }
 
 // Publish a topic with a string or []byte payload
@@ -109,29 +94,12 @@ func (s *Mqtt) Subscribe(topic string) (events <-chan mqtt.Message, err error) {
 	return c, nil
 }
 
-func (s *Mqtt) startOnlineLoop(intv time.Duration) (chan<- struct{}, error) {
-	shutdown := make(chan struct{})
-
-	if err := s.PublishString(s.TopicStatus(), STATUS_ONLINE); err != nil {
-		s.mqtt.Disconnect(1000)
-		return nil, err
-	}
-
-	go func() {
-		ticker := time.NewTicker(intv)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-shutdown:
-				return
-			case <-ticker.C:
-				s.PublishString(s.TopicStatus(), STATUS_ONLINE)
-			}
-		}
-	}()
-
-	return shutdown, nil
+func (s *Mqtt) SubscribeFunc(topic string, f func(topic, val string)) error {
+	logrus.Debugf("Subscribing to %s...", topic)
+	t := s.mqtt.Subscribe(topic, 0, func(c mqtt.Client, m mqtt.Message) {
+		go f(m.Topic(), string(m.Payload()))
+	})
+	return resolveToken(t)
 }
 
 func resolveToken(t mqtt.Token) error {
