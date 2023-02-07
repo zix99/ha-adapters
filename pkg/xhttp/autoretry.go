@@ -3,6 +3,7 @@ package xhttp
 import (
 	"errors"
 	"net/http"
+	"time"
 )
 
 var ErrorExceedsRetry = errors.New("exceeds retry count")
@@ -10,6 +11,7 @@ var ErrorExceedsRetry = errors.New("exceeds retry count")
 type AutoRetry struct {
 	client      XHttp
 	RetryCount  int
+	Delay       time.Duration
 	ExpectsCode []int
 }
 
@@ -17,6 +19,7 @@ func NewAutoRetry(client XHttp, retryCount int) *AutoRetry {
 	return &AutoRetry{
 		client,
 		retryCount,
+		500 * time.Millisecond,
 		[]int{200},
 	}
 }
@@ -24,7 +27,6 @@ func NewAutoRetry(client XHttp, retryCount int) *AutoRetry {
 func (s *AutoRetry) Do(req *http.Request) (*http.Response, error) {
 	i := 0
 	for {
-		// FIXME: This code isn't so good, doesn't handle body.close()
 		i++
 
 		resp, err := s.client.Do(req)
@@ -32,12 +34,16 @@ func (s *AutoRetry) Do(req *http.Request) (*http.Response, error) {
 			if i >= s.RetryCount {
 				return nil, err
 			}
+			time.Sleep(s.Delay)
 			continue
 		}
 		if containsInt(s.ExpectsCode, resp.StatusCode) {
 			// success!
 			return resp, err
 		}
+
+		// Didn't get the result we expected, cleanup and try again
+		resp.Body.Close()
 
 		if i >= s.RetryCount {
 			return nil, ErrorExceedsRetry

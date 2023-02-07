@@ -29,6 +29,8 @@ func runAD410(c *cli.Context) error {
 		amcrestUrl      = c.String("ad410-url")
 		amcrestUsername = c.String("ad410-username")
 		amcrestPassword = c.String("ad410-password")
+		deviceName      = c.String("device-name")
+		pollDuration    = c.Duration("ad410-poll")
 		mediaDirTmpl    = mustCompileTemplateOrNil(c.String("media-dir"))
 	)
 
@@ -56,10 +58,10 @@ func runAD410(c *cli.Context) error {
 	defer ha.Close()
 
 	device := comms.DeviceClass{
-		DeviceName:   "Amcrest(HAA) " + doorbell.DeviceType,
-		Manufacturer: "Amcrest(HAA)",
+		DeviceName:   deviceName,
+		Manufacturer: "Amcrest",
 		Model:        doorbell.DeviceType,
-		Identifier:   "ad410b-" + doorbell.SerialNumber,
+		Identifier:   "ad410-" + doorbell.SerialNumber,
 		Version:      doorbell.SoftwareVersion,
 	}
 
@@ -135,7 +137,7 @@ func runAD410(c *cli.Context) error {
 	signal.Notify(sigint, os.Interrupt)
 	defer signal.Stop(sigint)
 
-	metadataTicker := time.NewTicker(5 * time.Minute)
+	metadataTicker := time.NewTicker(pollDuration)
 	defer metadataTicker.Stop()
 
 LOOP:
@@ -149,14 +151,14 @@ LOOP:
 
 			switch event.Code {
 			case "VideoMotion":
-				mqtt.PublishState(&dMotion, comms.StateStr(event.Action == "Start"))
+				go mqtt.PublishState(&dMotion, comms.StateStr(event.Action == "Start"))
 			case "CrossRegionDetection":
 				if gjson.Get(event.Data, "Object.ObjectType").String() == "Human" {
-					mqtt.PublishState(&dHuman, comms.StateStr(event.Action == "Start"))
+					go mqtt.PublishState(&dHuman, comms.StateStr(event.Action == "Start"))
 				}
 			case "_DoTalkAction_":
 				state := comms.StateStr(gjson.Get(event.Data, "Action").String() == "Invite")
-				mqtt.PublishState(&dButton, state)
+				go mqtt.PublishState(&dButton, state)
 			case "NewFile":
 				camPath := gjson.Get(event.Data, "File").String()
 				// There are also `.mp4`, but they seem poorly encoded. I currently can't
@@ -172,19 +174,21 @@ LOOP:
 			break LOOP
 
 		case <-metadataTicker.C:
-			logrus.Info("Updating metadata...")
-			info, err := doorbell.GetStorageInfo()
-			if err == nil {
-				logrus.Debug(info)
-				totalBytes, err0 := strconv.ParseFloat(info["list.info[0].Detail[0].TotalBytes"], 64)
-				usedBytes, err1 := strconv.ParseFloat(info["list.info[0].Detail[0].UsedBytes"], 64)
-				if err0 == nil && err1 == nil {
-					mqtt.PublishValue(&dStorageUsedPercent, strconv.FormatFloat(usedBytes*100.0/totalBytes, 'f', 1, 64))
-					mqtt.PublishValue(&dStorageUsed, strconv.FormatFloat(usedBytes/1024.0/1024.0/1024.0, 'f', 2, 64))
-				} else {
-					logrus.Warn(err0, err1)
+			go func() {
+				logrus.Info("Updating metadata...")
+				info, err := doorbell.GetStorageInfo()
+				if err == nil {
+					logrus.Debug(info)
+					totalBytes, err0 := strconv.ParseFloat(info["list.info[0].Detail[0].TotalBytes"], 64)
+					usedBytes, err1 := strconv.ParseFloat(info["list.info[0].Detail[0].UsedBytes"], 64)
+					if err0 == nil && err1 == nil {
+						mqtt.PublishValue(&dStorageUsedPercent, strconv.FormatFloat(usedBytes*100.0/totalBytes, 'f', 1, 64))
+						mqtt.PublishValue(&dStorageUsed, strconv.FormatFloat(usedBytes/1024.0/1024.0/1024.0, 'f', 2, 64))
+					} else {
+						logrus.Warn(err0, err1)
+					}
 				}
-			}
+			}()
 		}
 	}
 
@@ -226,6 +230,16 @@ func main() {
 			Name:    "ad410-password",
 			EnvVars: []string{"AD410_PASSWORD"},
 			Usage:   "AD410 password",
+		},
+		&cli.StringFlag{
+			Name:  "device-name",
+			Usage: "Name of device",
+			Value: "Doorbell",
+		},
+		&cli.DurationFlag{
+			Name:  "ad410-poll",
+			Usage: "Duration between update polls",
+			Value: 5 * time.Minute,
 		},
 		&cli.StringFlag{
 			Name:    "media-dir",

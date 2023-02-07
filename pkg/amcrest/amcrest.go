@@ -73,7 +73,7 @@ func (s *AmcrestDevice) GetStorageInfo() (map[string]string, error) {
 		return nil, err
 	}
 
-	return parsers.ParseManyKV(info, "\n"), nil
+	return parsers.ParseManyKV(info, '\n'), nil
 }
 
 func (s *AmcrestDevice) magicBox(action string) (string, error) {

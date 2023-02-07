@@ -11,7 +11,7 @@ func (s *AmcrestDevice) GetConfig() (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	configs := parsers.ParseManyKV(info, "\n")
+	configs := parsers.ParseManyKV(info, '\n')
 
 	// Keys all seem to contain "table.All" unncessarily, but setting config doesn't
 	// so try to remove

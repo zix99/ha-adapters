@@ -64,7 +64,7 @@ func (s *HomeAssistant) Advertise(d *comms.Sensor) error {
 	payload := s.deviceBaseConfig(&d.DeviceClass)
 	maps.Copy(payload, JsonMap{
 		"state_topic": d.StateTopic(),
-		"name":        d.Name,
+		"name":        d.DeviceClass.DeviceName + " " + d.Name,
 		"unique_id":   d.UniqueId(),
 	})
 
@@ -104,7 +104,7 @@ func (s *HomeAssistant) deviceBaseConfig(dc *comms.DeviceClass) JsonMap {
 			"name":         dc.DeviceName,
 			"manufacturer": dc.Manufacturer,
 			"model":        dc.Model,
-			"identifiers":  dc.Identifier + "b",
+			"identifiers":  dc.Identifier,
 			"sw_version":   dc.Version,
 			"via_device":   Default_HA_Via,
 		},

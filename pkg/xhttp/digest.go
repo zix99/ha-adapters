@@ -4,10 +4,13 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"ha-adapters/pkg/parsers"
 	"math/rand"
 	"net/http"
 	"strings"
 	"sync/atomic"
+
+	"golang.org/x/exp/maps"
 )
 
 // https://stackoverflow.com/questions/39474284/how-do-you-do-a-http-post-with-digest-authentication-in-golang
@@ -65,19 +68,16 @@ func (s *HttpDigestSession) Do(req *http.Request) (*http.Response, error) {
 }
 
 func parseDigest(resp *http.Response) map[string]string {
-	// I dislike this function strongly, but it works
-	result := map[string]string{}
-	if len(resp.Header["Www-Authenticate"]) > 0 {
-		wantedHeaders := []string{"nonce", "realm", "qop"}
-		responseHeaders := strings.Split(resp.Header["Www-Authenticate"][0], ",")
-		for _, r := range responseHeaders {
-			for _, w := range wantedHeaders {
-				if strings.Contains(r, w) {
-					result[w] = strings.Split(r, `"`)[1]
-				}
-			}
+	const prefix = "Digest "
+
+	result := make(map[string]string)
+	for _, header := range resp.Header["Www-Authenticate"] {
+		if strings.HasPrefix(header, prefix) {
+			header = header[len(prefix):]
+			maps.Copy(result, parsers.ParseManyKV(header, ','))
 		}
 	}
+
 	return result
 }
 
