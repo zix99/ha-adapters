@@ -74,11 +74,11 @@ func (s *Mqtt) PublishJson(topic string, data interface{}) error {
 	return s.Publish(topic, b)
 }
 
-func (s *Mqtt) PublishState(device DeviceStateTopic, state DeviceState) {
+func (s *Mqtt) PublishState(device SensorTopic, state SensorState) {
 	s.PublishString(device.StateTopic(), string(state))
 }
 
-func (s *Mqtt) PublishValue(device DeviceStateTopic, value string) {
+func (s *Mqtt) PublishValue(device SensorTopic, value string) {
 	s.PublishString(device.StateTopic(), value)
 }
 

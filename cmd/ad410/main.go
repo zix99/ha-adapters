@@ -68,27 +68,27 @@ func runAD410(c *cli.Context) error {
 	dButton := comms.Sensor{
 		DeviceClass: device,
 		Name:        "Doorbell",
-		Type:        comms.DT_BINARY_SENSOR,
+		Type:        comms.ST_BINARY_SENSOR,
 		Icon:        "mdi:doorbell",
 	}
 
 	dHuman := comms.Sensor{
 		DeviceClass: device,
 		Name:        "Human",
-		Type:        comms.DT_BINARY_SENSOR,
-		ClassType:   comms.DC_MOTION,
+		Type:        comms.ST_BINARY_SENSOR,
+		ClassType:   comms.SC_MOTION,
 	}
 
 	dMotion := comms.Sensor{
 		DeviceClass: device,
 		Name:        "Motion",
-		Type:        comms.DT_BINARY_SENSOR,
-		ClassType:   comms.DC_MOTION,
+		Type:        comms.ST_BINARY_SENSOR,
+		ClassType:   comms.SC_MOTION,
 	}
 
 	dStorageUsedPercent := comms.Sensor{
 		DeviceClass:       device,
-		Type:              comms.DT_SENSOR,
+		Type:              comms.ST_SENSOR,
 		Name:              "Storage Used Percent",
 		UnitOfMeasurement: "%",
 		Category:          comms.EC_DIAGNOSTIC,
@@ -96,7 +96,7 @@ func runAD410(c *cli.Context) error {
 
 	dStorageUsed := comms.Sensor{
 		DeviceClass:       device,
-		Type:              comms.DT_SENSOR,
+		Type:              comms.ST_SENSOR,
 		Name:              "Storage Used",
 		UnitOfMeasurement: "GB",
 		Category:          comms.EC_DIAGNOSTIC,
@@ -104,7 +104,7 @@ func runAD410(c *cli.Context) error {
 
 	dLightSwitch := comms.Sensor{
 		DeviceClass: device,
-		Type:        comms.DT_SWITCH,
+		Type:        comms.ST_SWITCH,
 		Category:    comms.EC_CONFIG,
 		Name:        "Light",
 	}

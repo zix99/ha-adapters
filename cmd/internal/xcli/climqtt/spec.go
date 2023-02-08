@@ -25,8 +25,8 @@ var Flags = []cli.Flag{
 	},
 	&cli.IntFlag{
 		Name:  "qos",
-		Usage: "Default QOS",
-		Value: 2,
+		Usage: "Default MQTT QOS",
+		Value: 0,
 	},
 }
 

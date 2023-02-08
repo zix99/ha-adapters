@@ -16,37 +16,37 @@ type DeviceClass struct {
 	Version      string // Software version
 }
 
-type DeviceType string
+type SensorType string
 
 const (
-	DT_BINARY_SENSOR DeviceType = "binary_sensor"
-	DT_SENSOR        DeviceType = "sensor"
-	DT_SWITCH        DeviceType = "switch"
+	ST_BINARY_SENSOR SensorType = "binary_sensor"
+	ST_SENSOR        SensorType = "sensor"
+	ST_SWITCH        SensorType = "switch"
 )
 
-type EntityCategory string
+type SensorCategory string
 
 var (
-	EC_DEFAULT    EntityCategory = ""
-	EC_CONFIG     EntityCategory = "config"
-	EC_DIAGNOSTIC EntityCategory = "diagnostic"
+	EC_DEFAULT    SensorCategory = ""
+	EC_CONFIG     SensorCategory = "config"
+	EC_DIAGNOSTIC SensorCategory = "diagnostic"
 )
 
-type DeviceClassType string
+type SensorClassType string
 
 var (
-	DC_MOTION  DeviceClassType = "motion"
-	DC_BATTERY DeviceClassType = "battery"
+	SC_MOTION  SensorClassType = "motion"
+	SC_BATTERY SensorClassType = "battery"
 )
 
-type DeviceState string
+type SensorState string
 
 const (
-	STATE_ON  DeviceState = "on"
-	STATE_OFF DeviceState = "off"
+	STATE_ON  SensorState = "on"
+	STATE_OFF SensorState = "off"
 )
 
-func StateStr(on bool) DeviceState {
+func StateStr(on bool) SensorState {
 	if on {
 		return STATE_ON
 	}
@@ -64,25 +64,20 @@ const (
 
 type Sensor struct {
 	DeviceClass
-	Name string
-	Type DeviceType
-	Icon string
+	Name     string
+	Type     SensorType
+	Icon     string
+	JsonPath string
 
 	UnitOfMeasurement string
-	Category          EntityCategory
-	ClassType         DeviceClassType
+	Category          SensorCategory
+	ClassType         SensorClassType
+
+	Extra map[string]interface{}
 }
 
-type DeviceStateTopic interface {
+type SensorTopic interface {
 	StateTopic() string
-}
-
-func (s *DeviceClass) NewBinarySensor(name string) *Sensor {
-	return &Sensor{
-		DeviceClass: *s,
-		Name:        name,
-		Type:        DT_BINARY_SENSOR,
-	}
 }
 
 func (s *Sensor) SanitizedName() string {
