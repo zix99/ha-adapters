@@ -67,7 +67,7 @@ func runAD410(c *cli.Context) error {
 
 	dButton := comms.Sensor{
 		DeviceClass: device,
-		Name:        "Doorbell",
+		Name:        "Button",
 		Type:        comms.ST_BINARY_SENSOR,
 		Icon:        "mdi:doorbell",
 	}
@@ -91,6 +91,7 @@ func runAD410(c *cli.Context) error {
 		Type:              comms.ST_SENSOR,
 		Name:              "Storage Used Percent",
 		UnitOfMeasurement: "%",
+		Icon:              "mdi:micro-sd",
 		Category:          comms.EC_DIAGNOSTIC,
 	}
 
@@ -99,6 +100,16 @@ func runAD410(c *cli.Context) error {
 		Type:              comms.ST_SENSOR,
 		Name:              "Storage Used",
 		UnitOfMeasurement: "GB",
+		Icon:              "mdi:micro-sd",
+		Category:          comms.EC_DIAGNOSTIC,
+	}
+
+	dStorageTotal := comms.Sensor{
+		DeviceClass:       device,
+		Type:              comms.ST_SENSOR,
+		Name:              "Storage Total",
+		UnitOfMeasurement: "GB",
+		Icon:              "mdi:micro-sd",
 		Category:          comms.EC_DIAGNOSTIC,
 	}
 
@@ -123,6 +134,7 @@ func runAD410(c *cli.Context) error {
 
 	ha.Advertise(&dStorageUsedPercent)
 	ha.Advertise(&dStorageUsed)
+	ha.Advertise(&dStorageTotal)
 
 	// Config/events
 	mqtt.SubscribeFunc(dLightSwitch.StateTopic(), func(topic, val string) {
@@ -184,6 +196,7 @@ LOOP:
 					if err0 == nil && err1 == nil {
 						mqtt.PublishValue(&dStorageUsedPercent, strconv.FormatFloat(usedBytes*100.0/totalBytes, 'f', 1, 64))
 						mqtt.PublishValue(&dStorageUsed, strconv.FormatFloat(usedBytes/1024.0/1024.0/1024.0, 'f', 2, 64))
+						mqtt.PublishValue(&dStorageTotal, strconv.FormatFloat(totalBytes/1024.0/1024.0/1024.0, 'f', 2, 64))
 					} else {
 						logrus.Warn(err0, err1)
 					}

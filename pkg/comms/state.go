@@ -88,6 +88,10 @@ func (s *Sensor) UniqueId() string {
 	return sanitize(s.Identifier) + "." + sanitize(s.Name)
 }
 
+func (s *Sensor) FullName() string {
+	return s.DeviceClass.DeviceName + " " + s.Name
+}
+
 func (s *Sensor) StateTopic() string {
 	return path.Join(
 		TopicPrefix,
