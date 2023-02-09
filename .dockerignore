@@ -2,3 +2,4 @@ README.md
 Dockerfile
 .env
 temp/
+makefile

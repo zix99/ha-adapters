@@ -8,8 +8,9 @@ run:
 docker-build:
 	docker build -t ha-ad410:latest .
 
-docker-push:
+docker-push: docker-build
 	docker tag ha-ad410:latest ${DH_USERNAME}/${DH_PROJECT}:latest
-	docker tag ha-ad410:latest ${DH_USERNAME}/${DH_PROJECT}:${COMMIT_SHA}
+	docker tag ha-ad410:latest ${DH_USERNAME}/${DH_PROJECT}:git-${COMMIT_SHA}
 	docker push ${DH_USERNAME}/${DH_PROJECT}:latest
+	docker push ${DH_USERNAME}/${DH_PROJECT}:git-${COMMIT_SHA}
 
