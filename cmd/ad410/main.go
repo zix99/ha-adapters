@@ -121,16 +121,16 @@ func runAD410(c *cli.Context) error {
 	}
 
 	ha.Advertise(&dButton)
-	mqtt.PublishState(&dButton, comms.STATE_OFF)
+	time.AfterFunc(5*time.Second, func() { mqtt.PublishState(&dButton, comms.STATE_OFF) })
 
 	ha.Advertise(&dHuman)
-	mqtt.PublishState(&dHuman, comms.STATE_OFF)
+	time.AfterFunc(5*time.Second, func() { mqtt.PublishState(&dHuman, comms.STATE_OFF) })
 
 	ha.Advertise(&dMotion)
-	mqtt.PublishState(&dMotion, comms.STATE_OFF)
+	time.AfterFunc(5*time.Second, func() { mqtt.PublishState(&dMotion, comms.STATE_OFF) })
 
 	ha.Advertise(&dLightSwitch)
-	mqtt.PublishState(&dLightSwitch, comms.STATE_OFF)
+	time.AfterFunc(5*time.Second, func() { mqtt.PublishState(&dLightSwitch, comms.STATE_OFF) })
 
 	ha.Advertise(&dStorageUsedPercent)
 	ha.Advertise(&dStorageUsed)

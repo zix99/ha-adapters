@@ -23,6 +23,7 @@ type Event struct {
 func (s *AmcrestDevice) OpenReliableEventStream(maxSequentialRetries int) <-chan Event {
 	c := make(chan Event, 10)
 	go func() {
+		defer close(c)
 		for retries := 0; retries < maxSequentialRetries; retries++ {
 			stream, err := s.OpenEventStream()
 			if err != nil {
@@ -75,6 +76,7 @@ func (s *AmcrestDevice) OpenEventStream() (<-chan Event, error) {
 
 	go func() {
 		defer resp.Body.Close()
+		defer close(c)
 		mp := multipart.NewReader(resp.Body, boundaryKeyword)
 
 		for {
@@ -103,7 +105,6 @@ func (s *AmcrestDevice) OpenEventStream() (<-chan Event, error) {
 		}
 
 		logrus.Info("Closing event stream...")
-		close(c)
 	}()
 
 	return c, nil
