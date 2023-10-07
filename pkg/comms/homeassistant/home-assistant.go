@@ -92,7 +92,7 @@ func (s *HomeAssistant) Advertise(d *comms.Sensor) error {
 	}
 
 	// Publish!
-	return s.mqtt.PublishJson(topic, payload)
+	return s.mqtt.RetainJson(topic, payload)
 }
 
 func (s *HomeAssistant) buildConfigTopic(d *comms.Sensor) string {
