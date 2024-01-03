@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"ha-adapters/pkg/comms"
 	"path"
-	"time"
 
 	"golang.org/x/exp/maps"
 )
@@ -19,8 +18,6 @@ type HomeAssistant struct {
 	mqtt        *comms.Mqtt
 	TopicRoot   string
 	TopicPrefix string
-
-	statusShutdown chan<- struct{}
 }
 
 func NewHomeAssistant(mqtt *comms.Mqtt) (*HomeAssistant, error) {
@@ -30,22 +27,11 @@ func NewHomeAssistant(mqtt *comms.Mqtt) (*HomeAssistant, error) {
 		TopicPrefix: Default_HA_Prefix,
 	}
 
-	shutdown, err := ha.startOnlineLoop(1 * time.Minute)
-	if err != nil {
-		return nil, err
-	}
-	ha.statusShutdown = shutdown
-
 	return ha, nil
 }
 
 func (s *HomeAssistant) Close() error {
-	if s.statusShutdown != nil {
-		s.statusShutdown <- struct{}{}
-		s.statusShutdown = nil
-
-		s.mqtt.PublishString(s.TopicStatus(), comms.STATUS_OFFLINE)
-	}
+	// noop
 	return nil
 }
 
@@ -107,7 +93,7 @@ func (s *HomeAssistant) buildConfigTopic(d *comms.Sensor) string {
 
 func (s *HomeAssistant) deviceBaseConfig(dc *comms.DeviceClass) JsonMap {
 	return JsonMap{
-		"availability_topic": s.TopicStatus(),
+		"availability_topic": comms.TopicStatus,
 		"qos":                s.mqtt.Qos,
 		"device": JsonMap{
 			"name":         dc.DeviceName,
@@ -118,32 +104,4 @@ func (s *HomeAssistant) deviceBaseConfig(dc *comms.DeviceClass) JsonMap {
 			"via_device":   Default_HA_Via,
 		},
 	}
-}
-
-func (s *HomeAssistant) TopicStatus() string {
-	return path.Join(comms.TopicPrefix, "status")
-}
-
-func (s *HomeAssistant) startOnlineLoop(intv time.Duration) (chan<- struct{}, error) {
-	shutdown := make(chan struct{})
-
-	if err := s.mqtt.PublishString(s.TopicStatus(), comms.STATUS_ONLINE); err != nil {
-		return nil, err
-	}
-
-	go func() {
-		ticker := time.NewTicker(intv)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-shutdown:
-				return
-			case <-ticker.C:
-				s.mqtt.PublishString(s.TopicStatus(), comms.STATUS_ONLINE)
-			}
-		}
-	}()
-
-	return shutdown, nil
 }

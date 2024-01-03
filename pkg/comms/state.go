@@ -8,6 +8,8 @@ import (
 
 var TopicPrefix = "ha-adapters"
 
+var TopicStatus = path.Join(TopicPrefix, "status")
+
 type DeviceClass struct {
 	DeviceName   string // A device name
 	Manufacturer string // Manufacturer of device

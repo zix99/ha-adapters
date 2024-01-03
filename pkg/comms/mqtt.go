@@ -18,7 +18,8 @@ type Mqtt struct {
 	mqtt mqtt.Client
 	Qos  byte
 
-	storedSubs map[string]func(mqtt.Message) // topic -> msg handler
+	storedSubs   map[string]func(mqtt.Message) // topic -> msg handler
+	loopShutdown chan<- struct{}
 }
 
 var _ Publisher = &Mqtt{}
@@ -40,6 +41,10 @@ func NewMqtt(brokerUri string, username, password string) (*Mqtt, error) {
 		client.resubscribe()
 	}
 
+	opts.WillEnabled = true
+	opts.WillTopic = TopicStatus
+	opts.WillPayload = []byte(STATUS_OFFLINE)
+
 	// NewClient makes a copy of `opts`
 	client.mqtt = mqtt.NewClient(opts)
 
@@ -48,12 +53,20 @@ func NewMqtt(brokerUri string, username, password string) (*Mqtt, error) {
 		return nil, err
 	}
 
+	client.loopShutdown = client.startOnlineLoop(1 * time.Minute)
+
 	logrus.Info("Connected!")
 
 	return client, nil
 }
 
 func (s *Mqtt) Close() error {
+	if s.loopShutdown != nil {
+		s.loopShutdown <- struct{}{}
+		s.loopShutdown = nil
+
+		s.PublishString(TopicStatus, STATUS_OFFLINE)
+	}
 	s.mqtt.Disconnect(1000)
 	return nil
 }
@@ -140,6 +153,28 @@ func (s *Mqtt) subscribeInternal(topic string, f func(m mqtt.Message)) error {
 		return err
 	}
 	return nil
+}
+
+func (s *Mqtt) startOnlineLoop(intv time.Duration) chan<- struct{} {
+	shutdown := make(chan struct{})
+
+	s.PublishString(TopicStatus, STATUS_ONLINE)
+
+	go func() {
+		ticker := time.NewTicker(intv)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-shutdown:
+				return
+			case <-ticker.C:
+				s.PublishString(TopicStatus, STATUS_ONLINE)
+			}
+		}
+	}()
+
+	return shutdown
 }
 
 func resolveToken(t mqtt.Token) error {
